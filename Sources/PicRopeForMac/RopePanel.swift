@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 
-/// 屏幕上沿的“绳子”面板：中部下垂的曲线绳 + 从中心向两侧交替悬挂的正方形截图
+/// 屏幕上沿的“绳子”面板：中部下垂的曲线绳 + 按时间从左到右排列的正方形截图（最新在最左）
 final class RopePanel {
     static let shared = RopePanel()
 
@@ -241,7 +241,7 @@ final class RopePanel {
     }
 }
 
-/// 绳子画布：绘制带材质的下垂曲线绳 + 衣夹 + 从中心交替向外悬挂的正方形截图
+/// 绳子画布：绘制带材质的下垂曲线绳 + 衣夹 + 按时间顺序悬挂的正方形截图
 final class RopeCanvas: NSView {
     var maxSide: CGFloat = 84
     var minSide: CGFloat = 28
@@ -306,20 +306,16 @@ final class RopeCanvas: NSView {
         return path
     }
 
-    // MARK: - 布局（从中心向两侧交替延伸）
-
-    /// 第 i 个（i=0 最新）的槽位偏移：0, -1, +1, -2, +2 ...
-    private func slotOffset(_ i: Int) -> CGFloat {
-        if i == 0 { return 0 }
-        return i % 2 == 1 ? -CGFloat((i + 1) / 2) : CGFloat(i / 2)
-    }
+    // MARK: - 布局（按时间从左到右，整体居中）
 
     override func layout() {
         super.layout()
         itemFrames.removeAll()
-        let cx = bounds.width / 2
+        // subviews 顺序即 i=0 最新：最新在最左，越往右越旧；放得下时整排居中，放不下从左边距开始（可横向滚动）
+        let total = CGFloat(subviews.count) * currentSide + CGFloat(max(subviews.count - 1, 0)) * spacing
+        let startX = max(margin, (bounds.width - total) / 2)
         for (i, view) in subviews.enumerated() {
-            let x = cx + slotOffset(i) * (currentSide + spacing) - currentSide / 2
+            let x = startX + CGFloat(i) * (currentSide + spacing)
             let ry = ropeY(atX: x + currentSide / 2)
             // 图顶挂在绳下方（夹住衣夹底端），沿曲线高度错落
             let frame = NSRect(x: x, y: ry - pinH - currentSide, width: currentSide, height: currentSide)
