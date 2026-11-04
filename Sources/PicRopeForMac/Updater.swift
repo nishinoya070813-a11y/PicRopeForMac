@@ -2,8 +2,8 @@ import AppKit
 
 /// 轻量更新检查：读取 GitHub Releases 最新版本，与当前版本比较
 enum Updater {
-    static let repo = "Amber01d/PicRopeForMac"
-    static let releasesURL = "https://github.com/Amber01d/PicRopeForMac/releases"
+    static let repo = "nishinoya070813-a11y/PicRopeForMac"
+    static let releasesURL = "https://github.com/nishinoya070813-a11y/PicRopeForMac/releases"
 
     /// 当前应用版本（读 Info.plist，裸二进制回退 0.1.0）
     static var currentVersion: String {
