@@ -12,7 +12,7 @@ final class RopeItemView: NSImageView {
         self.item = item
         self.side = side
         super.init(frame: NSRect(x: 0, y: 0, width: side, height: side))
-        self.image = RopeItemView.squareCropped(item.image, side: side)
+        self.image = RopeItemView.cachedSquare(item, side: side)
         self.imageScaling = .scaleProportionallyUpOrDown
         wantsLayer = true
         layer?.cornerRadius = 6
@@ -29,6 +29,18 @@ final class RopeItemView: NSImageView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) 未实现") }
+
+    /// 裁剪结果缓存：新截图挂上时只裁新的那张，不必重裁整条绳子
+    private static var squareCache: [String: NSImage] = [:]
+
+    private static func cachedSquare(_ item: CaptureItem, side: CGFloat) -> NSImage {
+        let key = "\(item.id.uuidString)-\(Int(side))"
+        if let hit = squareCache[key] { return hit }
+        if squareCache.count > 300 { squareCache.removeAll() }
+        let img = squareCropped(item.image, side: side)
+        squareCache[key] = img
+        return img
+    }
 
     /// 中心裁剪为正方形（无视原比例）
     private static func squareCropped(_ image: NSImage, side: CGFloat) -> NSImage {
@@ -55,6 +67,7 @@ final class RopeItemView: NSImageView {
     private var clickTimer: Timer?
 
     override func mouseUp(with event: NSEvent) {
+        ImagePreview.shared.hide()
         clickTimer?.invalidate()
         if event.clickCount == 2 {
             // 双击：只钉图，不复制
@@ -91,21 +104,42 @@ final class RopeItemView: NSImageView {
 
     override func mouseEntered(with event: NSEvent) {
         // 高亮：强调色边框 + 轻微放大
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.12
-            layer?.borderColor = NSColor.controlAccentColor.cgColor
-            layer?.borderWidth = 2
-            layer?.transform = CATransform3DMakeScale(1.08, 1.08, 1)
-        })
+        animateHover(true)
+        ImagePreview.shared.schedule(item, from: self)
+    }
+
+    /// AppKit 管理的图层默认关闭隐式动画，直接改 transform 会“跳”，这里显式加动画
+    private func animateHover(_ on: Bool) {
+        guard let layer else { return }
+        // 以方块中心为基准缩放（与 anchorPoint 设置无关）
+        let w = layer.bounds.width, h = layer.bounds.height
+        let cx = (0.5 - layer.anchorPoint.x) * w
+        let cy = (0.5 - layer.anchorPoint.y) * h
+        let target = on
+            ? CATransform3DConcat(CATransform3DConcat(CATransform3DMakeTranslation(-cx, -cy, 0),
+                                                      CATransform3DMakeScale(1.08, 1.08, 1)),
+                                  CATransform3DMakeTranslation(cx, cy, 0))
+            : CATransform3DIdentity
+
+        let anim = CABasicAnimation(keyPath: "transform")
+        anim.fromValue = layer.presentation()?.transform ?? layer.transform
+        anim.toValue = target
+        anim.duration = 0.14
+        anim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = target
+        layer.borderColor = on ? NSColor.controlAccentColor.cgColor
+                               : NSColor.separatorColor.withAlphaComponent(0.35).cgColor
+        layer.borderWidth = on ? 2 : 1
+        CATransaction.commit()
+        layer.add(anim, forKey: "hover")
     }
 
     override func mouseExited(with event: NSEvent) {
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.12
-            layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
-            layer?.borderWidth = 1
-            layer?.transform = CATransform3DIdentity
-        })
+        ImagePreview.shared.hide()
+        animateHover(false)
     }
 
     override func resetCursorRects() {
@@ -115,7 +149,9 @@ final class RopeItemView: NSImageView {
     // MARK: - 右键菜单
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        ImagePreview.shared.hide()
         let menu = NSMenu()
+        menu.addItem(mi("用预览打开", #selector(openMenu)))
         menu.addItem(mi("复制", #selector(copyToClipboardMenu)))
         menu.addItem(mi("钉在桌面", #selector(pinMenu)))
         menu.addItem(mi("存储到…", #selector(saveMenu)))
@@ -137,6 +173,14 @@ final class RopeItemView: NSImageView {
     @objc private func removeMenu() { CaptureStore.shared.remove(item) }
     @objc private func removeOthersMenu() { CaptureStore.shared.removeAll(except: item) }
     @objc private func removeAllMenu() { CaptureStore.shared.clear() }
+
+    /// 写到临时目录再用默认看图应用（通常是“预览”）打开，不碰绳子自己的存档文件
+    @objc private func openMenu() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(item.fileName)
+        if (try? item.data.write(to: url)) != nil {
+            NSWorkspace.shared.open(url)
+        }
+    }
 
     @objc private func saveMenu() {
         let panel = NSSavePanel()

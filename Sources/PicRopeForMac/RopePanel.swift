@@ -151,31 +151,75 @@ final class RopePanel {
         reload()
     }
 
+    /// 动画代数：淡出途中又被呼出时，作废旧的淡出收尾
+    private var animGen = 0
+
     func show() {
         guard !isShown else { return }
         isShown = true
         hideWork?.cancel()
-        reload()
+        animGen += 1
+        // 截图变化时 CaptureStore.changes 已经刷新过内容，这里只定位，不再重建缩略图
         reposition()
+
+        if !panel.isVisible { panel.alphaValue = 0 }
         panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+            panel.animator().alphaValue = 1
+        }
+        // 从上方 14pt 滑入（只加 GPU 动画，不改图层实际位置）
+        if let layer = container.layer {
+            let slide = CABasicAnimation(keyPath: "transform")
+            slide.fromValue = CATransform3DMakeTranslation(0, 14, 0)
+            slide.toValue = CATransform3DIdentity
+            slide.duration = 0.22
+            slide.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+            layer.add(slide, forKey: "slideIn")
+        }
     }
 
     func hide() {
         guard isShown else { return }
         isShown = false
-        panel.orderOut(nil)
+        ImagePreview.shared.hide()
+        animGen += 1
+        let gen = animGen
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.14
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            guard let self, self.animGen == gen else { return }
+            self.panel.orderOut(nil)
+        })
     }
 
     /// 鼠标离开后延迟收起（避免误触）；常驻模式下不自动收起，但手动隐藏始终有效
-    func scheduleHide() {
+    func scheduleHide(after delay: TimeInterval = 0.35) {
         guard !Settings.ropeAlwaysVisible else { return }
         hideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.hide() }
         hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     func cancelHide() { hideWork?.cancel() }
+
+    var isVisible: Bool { isShown }
+    var panelFrame: NSRect { panel.frame }
+    var anchorScreenFrame: NSRect { anchorScreen.frame }
+
+    /// 快捷键用：显示 ⇄ 隐藏
+    func toggle() {
+        if isShown {
+            hide()
+        } else {
+            cancelHide()
+            show()
+        }
+    }
 
     /// 外部触发：按当前设置刷新尺寸与布局（设置确定后调用）
     func reloadIfShown() {

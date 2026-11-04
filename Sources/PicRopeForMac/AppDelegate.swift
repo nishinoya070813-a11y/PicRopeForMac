@@ -24,8 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                                object: nil, queue: .main) { _ in
             RopePanel.shared.cancelHide()
             RopePanel.shared.show()
-            RopePanel.shared.scheduleHide()
+            RopePanel.shared.scheduleHide(after: 2.5)
         }
+
+        // 鼠标碰屏幕顶边中段呼出绳子；⌥⇧R 显示/隐藏绳子
+        EdgeTrigger.shared.start()
+        HotKey.register()
 
         // 启动 3 秒后静默检查更新（可在设置中关闭）
         if Settings.autoCheckUpdate {
