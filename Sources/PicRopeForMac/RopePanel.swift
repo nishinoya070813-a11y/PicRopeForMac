@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 
-/// 屏幕上沿的“绳子”面板：中部下垂的曲线绳 + 按时间从左到右排列的正方形截图（最新在最左）
+/// 屏幕上沿的“绳子”面板：中部下垂的曲线绳 + 按时间从左到右排列的正方形截图（最新在最右）
 final class RopePanel {
     static let shared = RopePanel()
 
@@ -133,7 +133,11 @@ final class RopePanel {
         canvas.maxSide = Layout.maxSide
         canvas.setFrameSize(NSSize(width: max(panel.frame.width, canvas.neededWidth),
                                    height: Layout.panelHeight))
-        canvas.setItems(CaptureStore.shared.items.reversed())
+        canvas.setItems(CaptureStore.shared.items)   // 旧 → 新
+        // 放不下需要横向滚动时，停在最右端，让最新的截图可见
+        let clip = scrollView.contentView
+        clip.scroll(to: NSPoint(x: max(0, canvas.frame.width - clip.bounds.width), y: 0))
+        scrollView.reflectScrolledClipView(clip)
     }
 
     /// 拖动移动绳子（只允许上下调节；dy 向上为正；偏移按屏幕独立保存）
@@ -311,7 +315,7 @@ final class RopeCanvas: NSView {
     override func layout() {
         super.layout()
         itemFrames.removeAll()
-        // subviews 顺序即 i=0 最新：最新在最左，越往右越旧；放得下时整排居中，放不下从左边距开始（可横向滚动）
+        // subviews 顺序即时间顺序：最旧在最左，最新在最右；放得下时整排居中，放不下从左边距开始（可横向滚动）
         let total = CGFloat(subviews.count) * currentSide + CGFloat(max(subviews.count - 1, 0)) * spacing
         let startX = max(margin, (bounds.width - total) / 2)
         for (i, view) in subviews.enumerated() {
