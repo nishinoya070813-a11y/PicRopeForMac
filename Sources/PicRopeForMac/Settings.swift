@@ -13,6 +13,7 @@ enum Settings {
         static let ropeScreenIndex = "ropeScreenIndex"          // 绳子所在屏幕序号
         static let defaultSide = "defaultSide"                    // 默认截图卡片大小（pt）
         static let autoCheckUpdate = "autoCheckUpdate"            // 启动时自动检查更新
+        static let popOnCapture = "popOnCapture"                  // 新截图挂上时自动弹出绳子
     }
 
     /// 剪贴板收集（核心功能，默认开启）
@@ -94,6 +95,12 @@ enum Settings {
             return v == 0 ? 84.0 : min(240.0, max(40.0, v))
         }
         set { defaults.set(min(240.0, max(40.0, newValue)), forKey: Key.defaultSide) }
+    }
+
+    /// 新截图挂上时自动弹出绳子（默认关闭：需要时自己去顶边/快捷键呼出）
+    static var popOnCapture: Bool {
+        get { defaults.object(forKey: Key.popOnCapture) as? Bool ?? false }
+        set { defaults.set(newValue, forKey: Key.popOnCapture) }
     }
 
     /// 启动时自动检查更新（默认开启）

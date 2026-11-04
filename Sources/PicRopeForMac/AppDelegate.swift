@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 有新截图挂上时自动短暂展示绳子
         NotificationCenter.default.addObserver(forName: .picRopeItemAdded,
                                                object: nil, queue: .main) { _ in
+            guard Settings.popOnCapture else { return }
             RopePanel.shared.cancelHide()
             RopePanel.shared.show()
             RopePanel.shared.scheduleHide(after: 2.5)
