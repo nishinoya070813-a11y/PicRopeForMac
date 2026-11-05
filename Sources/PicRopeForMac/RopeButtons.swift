@@ -25,8 +25,8 @@ final class DeleteBadge: NSButton {
     @objc private func tapped() { onClick?() }
 }
 
-/// 最新一张截图右边的「清空」（保留收藏）：红色胶囊按钮，深浅背景下都显眼。
-/// 点一次变成实心红色「确认清空？」，3 秒内再点才真正清空，防误触
+/// 最新一张截图右边的「清空」（保留收藏）：深灰胶囊按钮，深浅背景下都显眼。
+/// 点一次反色成白底「确认清空？」，3 秒内再点才真正清空，防误触
 final class ClearAllButton: NSButton {
     private var armed = false
     private var hovering = false
@@ -82,13 +82,13 @@ final class ClearAllButton: NSButton {
         restyle()
     }
 
-    /// 平时：淡红底 + 红边红字；悬停加深；待确认：实心红底白字
+    /// 平时：深灰胶囊 + 白字白边（任何壁纸上都看得清）；悬停变亮；待确认：反色成白底黑字
     private func restyle() {
-        let red = NSColor.systemRed
-        let fg: NSColor = armed ? .white : red
-        let bg: NSColor = armed ? red : red.withAlphaComponent(hovering ? 0.28 : 0.16)
+        let fg: NSColor = armed ? .black : .white
+        let bg: NSColor = armed ? NSColor(white: 1, alpha: 0.95)
+            : NSColor(white: hovering ? 0.38 : 0.25, alpha: 0.88)
         layer?.backgroundColor = bg.cgColor
-        layer?.borderColor = red.cgColor
+        layer?.borderColor = NSColor(white: 1, alpha: armed ? 0.95 : 0.4).cgColor
 
         let symbol = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
             .applying(NSImage.SymbolConfiguration(paletteColors: [fg]))
