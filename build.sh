@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 
-VERSION="PRFM.0.3"
+VERSION="PRFM.0.4"
 
 echo "== swift build (release) =="
 swift build -c release
