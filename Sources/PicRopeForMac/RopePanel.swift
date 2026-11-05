@@ -9,6 +9,7 @@ final class RopePanel {
     private var scrollView: NSScrollView!
     private var canvas: RopeCanvas!
     private var container: NSView!
+    private let clearButton = ClearAllButton()
     private var cancellables = Set<AnyCancellable>()
     private var hideWork: DispatchWorkItem?
 
@@ -64,6 +65,10 @@ final class RopePanel {
         scrollView.frame = NSRect(x: 0, y: 0, width: size.width, height: size.height)
         scrollView.automaticallyAdjustsContentInsets = false
         container.addSubview(scrollView)
+
+        clearButton.frame.origin = NSPoint(x: size.width - clearButton.frame.width - 14, y: 8)
+        clearButton.autoresizingMask = [.minXMargin, .maxYMargin]   // 面板变宽时贴住右下角
+        container.addSubview(clearButton)
 
         panel.contentView = container
 
@@ -134,6 +139,8 @@ final class RopePanel {
         canvas.setFrameSize(NSSize(width: max(panel.frame.width, canvas.neededWidth),
                                    height: Layout.panelHeight))
         canvas.setItems(CaptureStore.shared.items)   // 旧 → 新
+        clearButton.isHidden = CaptureStore.shared.items.isEmpty
+        clearButton.disarm()
         // 放不下需要横向滚动时，停在最右端，让最新的截图可见
         let clip = scrollView.contentView
         clip.scroll(to: NSPoint(x: max(0, canvas.frame.width - clip.bounds.width), y: 0))

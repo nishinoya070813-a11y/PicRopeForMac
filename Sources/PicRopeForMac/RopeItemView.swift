@@ -7,11 +7,22 @@ final class RopeItemView: NSImageView {
     /// 方块边长上限（放不下时会整体缩小）
     static let maxSide: CGFloat = 84
     private let side: CGFloat
+    private let deleteBadge: DeleteBadge
 
     init(item: CaptureItem, side: CGFloat = RopeItemView.maxSide) {
         self.item = item
         self.side = side
+        // 右上角删除按钮：随方块大小缩放，12–18pt
+        let d = max(12, min(18, (side * 0.28).rounded()))
+        self.deleteBadge = DeleteBadge(frame: NSRect(x: side - d - 3, y: side - d - 3, width: d, height: d))
         super.init(frame: NSRect(x: 0, y: 0, width: side, height: side))
+        deleteBadge.isHidden = true
+        deleteBadge.onClick = { [weak self] in
+            guard let self else { return }
+            ImagePreview.shared.hide()
+            CaptureStore.shared.remove(self.item)
+        }
+        addSubview(deleteBadge)
         self.image = RopeItemView.cachedSquare(item, side: side)
         self.imageScaling = .scaleProportionallyUpOrDown
         wantsLayer = true
@@ -105,6 +116,7 @@ final class RopeItemView: NSImageView {
     override func mouseEntered(with event: NSEvent) {
         // 高亮：强调色边框 + 轻微放大
         animateHover(true)
+        deleteBadge.isHidden = false
         ImagePreview.shared.schedule(item, from: self)
     }
 
@@ -139,6 +151,7 @@ final class RopeItemView: NSImageView {
 
     override func mouseExited(with event: NSEvent) {
         ImagePreview.shared.hide()
+        deleteBadge.isHidden = true
         animateHover(false)
     }
 
