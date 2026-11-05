@@ -272,7 +272,8 @@ final class RopeItemView: NSImageView {
             LightNotice.show("图片读取失败")
             return
         }
-        LightNotice.show("正在识别文字…", icon: "text.viewfinder")
+        // 同一个提示从「识别中…」原地变成结果，不会先后弹两个
+        let notice = LightNotice.show("正在识别文字…", duration: nil, loading: true)
         DispatchQueue.global(qos: .userInitiated).async {
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
@@ -282,14 +283,14 @@ final class RopeItemView: NSImageView {
             let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
             DispatchQueue.main.async {
                 guard !lines.isEmpty else {
-                    LightNotice.show("没有识别到文字", icon: "exclamationmark.circle.fill", duration: 1.5)
+                    notice.update("没有识别到文字", icon: "exclamationmark.circle.fill")
                     return
                 }
                 let pb = NSPasteboard.general
                 pb.clearContents()
                 pb.setString(lines.joined(separator: "\n"), forType: .string)
                 ClipboardMonitorBridge.shared.markSelfWrite()
-                LightNotice.show("已复制 \(lines.count) 行文字，可直接 ⌘V 粘贴", duration: 2)
+                notice.update("已复制文字（\(lines.count) 行）")
             }
         }
     }
