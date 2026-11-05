@@ -9,7 +9,6 @@ final class RopePanel {
     private var scrollView: NSScrollView!
     private var canvas: RopeCanvas!
     private var container: NSView!
-    private let clearButton = ClearAllButton()
     private var cancellables = Set<AnyCancellable>()
     private var hideWork: DispatchWorkItem?
 
@@ -65,10 +64,6 @@ final class RopePanel {
         scrollView.frame = NSRect(x: 0, y: 0, width: size.width, height: size.height)
         scrollView.automaticallyAdjustsContentInsets = false
         container.addSubview(scrollView)
-
-        clearButton.frame.origin = NSPoint(x: size.width - clearButton.frame.width - 14, y: 8)
-        clearButton.autoresizingMask = [.minXMargin, .maxYMargin]   // 面板变宽时贴住右下角
-        container.addSubview(clearButton)
 
         panel.contentView = container
 
@@ -139,8 +134,6 @@ final class RopePanel {
         canvas.setFrameSize(NSSize(width: max(panel.frame.width, canvas.neededWidth),
                                    height: Layout.panelHeight))
         canvas.setItems(CaptureStore.shared.items)   // 旧 → 新
-        clearButton.isHidden = CaptureStore.shared.items.isEmpty
-        clearButton.disarm()
         // 放不下需要横向滚动时，停在最右端，让最新的截图可见
         let clip = scrollView.contentView
         clip.scroll(to: NSPoint(x: max(0, canvas.frame.width - clip.bounds.width), y: 0))
@@ -286,7 +279,11 @@ final class RopeCanvas: NSView {
         guard !items.isEmpty else { return 0 }
         let side = computeSide()
         return margin * 2 + CGFloat(items.count) * side + CGFloat(items.count - 1) * spacing
+            + spacing + clearButton.frame.width
     }
+
+    /// 「清空」按钮：挂在最新一张截图右边
+    private let clearButton = ClearAllButton()
 
     func setItems(_ items: [CaptureItem]) {
         self.items = items
@@ -294,6 +291,10 @@ final class RopeCanvas: NSView {
         subviews.forEach { $0.removeFromSuperview() }
         for item in items {
             addSubview(RopeItemView(item: item, side: currentSide))
+        }
+        if !items.isEmpty {
+            clearButton.disarm()
+            addSubview(clearButton)
         }
         needsLayout = true
         needsDisplay = true
@@ -326,15 +327,20 @@ final class RopeCanvas: NSView {
         super.layout()
         itemFrames.removeAll()
         // subviews 顺序即时间顺序：最旧在最左，最新在最右；放得下时整排居中，放不下从左边距开始（可横向滚动）
-        let total = CGFloat(subviews.count) * currentSide + CGFloat(max(subviews.count - 1, 0)) * spacing
+        let itemViews = subviews.compactMap { $0 as? RopeItemView }
+        let total = CGFloat(itemViews.count) * currentSide + CGFloat(max(itemViews.count - 1, 0)) * spacing
         let startX = max(margin, (bounds.width - total) / 2)
-        for (i, view) in subviews.enumerated() {
+        for (i, view) in itemViews.enumerated() {
             let x = startX + CGFloat(i) * (currentSide + spacing)
             let ry = ropeY(atX: x + currentSide / 2)
             // 图顶挂在绳下方（夹住衣夹底端），沿曲线高度错落
             let frame = NSRect(x: x, y: ry - pinH - currentSide, width: currentSide, height: currentSide)
             view.frame = frame
             itemFrames.append(frame)
+        }
+        if let last = itemFrames.last {
+            let b = clearButton.frame.size
+            clearButton.frame.origin = NSPoint(x: last.maxX + spacing, y: last.midY - b.height / 2)
         }
     }
 

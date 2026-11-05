@@ -67,7 +67,7 @@ final class CaptureStore {
 
     let changes = PassthroughSubject<Void, Never>()
 
-    /// 收藏的截图（按文件名记录）：不会被自动清理、清空或超量淘汰，只能单独删除
+    /// 收藏的截图（按文件名记录）：不会被删除、自动清理、清空或超量淘汰，取消收藏后才能删
     private var starred = Set(UserDefaults.standard.stringArray(forKey: "starredFiles") ?? [])
 
     private init() {
@@ -181,12 +181,12 @@ final class CaptureStore {
 
     /// 移除并删除磁盘文件
     func remove(_ item: CaptureItem) {
+        guard !starred.contains(item.fileName) else { return }   // 收藏的要先取消收藏
         queue.sync {
             items.removeAll { $0.id == item.id }
             hashes.remove(item.hash)
             try? FileManager.default.removeItem(at: fileURL(item))
         }
-        if starred.remove(item.fileName) != nil { saveStarred() }
         changes.send()
     }
 

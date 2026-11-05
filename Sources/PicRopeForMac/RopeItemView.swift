@@ -183,7 +183,7 @@ final class RopeItemView: NSImageView {
     override func mouseEntered(with event: NSEvent) {
         // 高亮：强调色边框 + 轻微放大
         animateHover(true)
-        deleteBadge.isHidden = false
+        deleteBadge.isHidden = CaptureStore.shared.isStarred(item)   // 收藏的不给删
         ImagePreview.shared.schedule(item, from: self)
     }
 
@@ -240,7 +240,13 @@ final class RopeItemView: NSImageView {
         menu.addItem(mi("钉在桌面", #selector(pinMenu)))
         menu.addItem(mi("存储到…", #selector(saveMenu)))
         menu.addItem(.separator())
-        menu.addItem(mi("删除此图片", #selector(removeMenu)))
+        if starred {
+            let locked = NSMenuItem(title: "已收藏，取消收藏后才能删除", action: nil, keyEquivalent: "")
+            locked.isEnabled = false
+            menu.addItem(locked)
+        } else {
+            menu.addItem(mi("删除此图片", #selector(removeMenu)))
+        }
         menu.addItem(mi("删除其他未收藏图片", #selector(removeOthersMenu)))
         menu.addItem(mi("删除所有未收藏图片", #selector(removeAllMenu)))
         return menu
@@ -266,7 +272,7 @@ final class RopeItemView: NSImageView {
             LightNotice.show("图片读取失败")
             return
         }
-        LightNotice.show("正在识别文字…")
+        LightNotice.show("正在识别文字…", icon: "text.viewfinder")
         DispatchQueue.global(qos: .userInitiated).async {
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
@@ -276,14 +282,14 @@ final class RopeItemView: NSImageView {
             let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
             DispatchQueue.main.async {
                 guard !lines.isEmpty else {
-                    LightNotice.show("没有识别到文字")
+                    LightNotice.show("没有识别到文字", icon: "exclamationmark.circle.fill", duration: 1.5)
                     return
                 }
                 let pb = NSPasteboard.general
                 pb.clearContents()
                 pb.setString(lines.joined(separator: "\n"), forType: .string)
                 ClipboardMonitorBridge.shared.markSelfWrite()
-                LightNotice.show("已复制文字（\(lines.count) 行）")
+                LightNotice.show("已复制 \(lines.count) 行文字，可直接 ⌘V 粘贴", duration: 2)
             }
         }
     }

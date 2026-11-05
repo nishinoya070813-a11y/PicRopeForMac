@@ -25,7 +25,7 @@ final class DeleteBadge: NSButton {
     @objc private func tapped() { onClick?() }
 }
 
-/// 绳子右下角的「清空」（保留收藏）：点一次变成「确认清空？」，3 秒内再点才真正清空，防误触
+/// 最新一张截图右边的「清空」（保留收藏）：点一次变成「确认清空？」，3 秒内再点才真正清空，防误触
 final class ClearAllButton: NSButton {
     private var armed = false
     private var resetWork: DispatchWorkItem?
@@ -33,6 +33,8 @@ final class ClearAllButton: NSButton {
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 84, height: 22))
         bezelStyle = .inline
+        image = NSImage(systemSymbolName: "trash", accessibilityDescription: "清空")
+        imagePosition = .imageLeading
         controlSize = .small
         font = .systemFont(ofSize: 11, weight: .medium)
         target = self
