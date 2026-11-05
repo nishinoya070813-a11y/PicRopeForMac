@@ -67,8 +67,58 @@ final class CaptureStore {
 
     let changes = PassthroughSubject<Void, Never>()
 
+    /// 收藏的截图（按文件名记录）：不会被自动清理、清空或超量淘汰，只能单独删除
+    private var starred = Set(UserDefaults.standard.stringArray(forKey: "starredFiles") ?? [])
+
     private init() {
         loadPersisted()
+    }
+
+    // MARK: - 收藏
+
+    func isStarred(_ item: CaptureItem) -> Bool { starred.contains(item.fileName) }
+
+    func toggleStar(_ item: CaptureItem) {
+        if starred.contains(item.fileName) {
+            starred.remove(item.fileName)
+        } else {
+            starred.insert(item.fileName)
+        }
+        saveStarred()
+        changes.send()
+    }
+
+    private func saveStarred() {
+        UserDefaults.standard.set(Array(starred), forKey: "starredFiles")
+    }
+
+    /// 超量时挑出要淘汰的：先挑最旧的未收藏，全是收藏时才动收藏
+    private func evictions(from list: [CaptureItem], count: Int) -> [CaptureItem] {
+        guard count > 0 else { return [] }
+        let plain = list.filter { !starred.contains($0.fileName) }
+        let kept = list.filter { starred.contains($0.fileName) }
+        return Array((plain + kept).prefix(count))
+    }
+
+    // MARK: - 自动清理
+
+    /// 删除超过保留时长且未收藏的截图
+    func purgeExpired() {
+        let hours = Settings.expireHours
+        guard hours > 0 else { return }
+        let base = Settings.expiryBaseDate
+        let cutoff = Date().addingTimeInterval(-Double(hours) * 3600)
+        var removed: [CaptureItem] = []
+        queue.sync {
+            removed = items.filter { !starred.contains($0.fileName) && max($0.createdAt, base) < cutoff }
+            let ids = Set(removed.map(\.id))
+            items.removeAll { ids.contains($0.id) }
+            removed.forEach {
+                hashes.remove($0.hash)
+                try? FileManager.default.removeItem(at: fileURL($0))
+            }
+        }
+        if !removed.isEmpty { changes.send() }
     }
 
     // MARK: - 持久化
@@ -96,12 +146,11 @@ final class CaptureStore {
             hashes.insert(item.hash)
             loaded.append(item)
         }
-        // 只恢复最近 maxItems 张
-        if loaded.count > maxItems {
-            let drop = Array(loaded[0..<(loaded.count - maxItems)])
-            drop.forEach { try? FileManager.default.removeItem(at: fileURL($0)) }
-            loaded.removeFirst(loaded.count - maxItems)
-        }
+        // 只恢复最近 maxItems 张（优先淘汰未收藏的）
+        let drop = evictions(from: loaded, count: loaded.count - maxItems)
+        let dropIDs = Set(drop.map(\.id))
+        drop.forEach { try? FileManager.default.removeItem(at: fileURL($0)) }
+        loaded.removeAll { dropIDs.contains($0.id) }
         items = loaded
     }
 
@@ -116,9 +165,10 @@ final class CaptureStore {
             NSLog("[PicRope] 挂上绳子: %@ (%d bytes)", item.source, item.data.count)
             try? item.data.write(to: fileURL(item))
             if items.count > maxItems {
-                let overflow = items.count - maxItems
-                let removed = Array(items[0..<overflow])
-                items.removeFirst(overflow)
+                let removed = evictions(from: items.filter { $0.id != item.id },
+                                        count: items.count - maxItems)
+                let ids = Set(removed.map(\.id))
+                items.removeAll { ids.contains($0.id) }
                 removed.forEach { hashes.remove($0.hash) }
                 // 淘汰的同时删除对应磁盘文件
                 removed.forEach { try? FileManager.default.removeItem(at: fileURL($0)) }
@@ -136,26 +186,29 @@ final class CaptureStore {
             hashes.remove(item.hash)
             try? FileManager.default.removeItem(at: fileURL(item))
         }
+        if starred.remove(item.fileName) != nil { saveStarred() }
         changes.send()
     }
 
-    /// 移除除指定图片外的所有图片（含本地缓存）
+    /// 移除除指定图片和收藏外的所有图片（含本地缓存）
     func removeAll(except keep: CaptureItem) {
         queue.sync {
-            let removed = items.filter { $0.id != keep.id }
+            let removed = items.filter { $0.id != keep.id && !starred.contains($0.fileName) }
             removed.forEach { try? FileManager.default.removeItem(at: fileURL($0)) }
-            items = [keep]
-            hashes = [keep.hash]
+            let ids = Set(removed.map(\.id))
+            items.removeAll { ids.contains($0.id) }
+            hashes = Set(items.map(\.hash))
         }
         changes.send()
     }
 
-    /// 清空绳子（同时清空本地缓存）
+    /// 清空绳子上未收藏的图片（同时清空本地缓存），收藏的保留
     func clear() {
         queue.sync {
-            items.forEach { try? FileManager.default.removeItem(at: fileURL($0)) }
-            items.removeAll()
-            hashes.removeAll()
+            let removed = items.filter { !starred.contains($0.fileName) }
+            removed.forEach { try? FileManager.default.removeItem(at: fileURL($0)) }
+            items.removeAll { !starred.contains($0.fileName) }
+            hashes = Set(items.map(\.hash))
         }
         changes.send()
     }

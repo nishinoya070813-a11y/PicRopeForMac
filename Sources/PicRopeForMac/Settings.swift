@@ -14,6 +14,8 @@ enum Settings {
         static let defaultSide = "defaultSide"                    // 默认截图卡片大小（pt）
         static let autoCheckUpdate = "autoCheckUpdate"            // 启动时自动检查更新
         static let popOnCapture = "popOnCapture"                  // 新截图挂上时自动弹出绳子
+        static let expireHours = "expireHours"                    // 未收藏截图保留时长（小时，0 = 不清理）
+        static let expiryBase = "expiryBase"                      // 自动清理起算时间
     }
 
     /// 剪贴板收集（核心功能，默认开启）
@@ -101,6 +103,20 @@ enum Settings {
     static var popOnCapture: Bool {
         get { defaults.object(forKey: Key.popOnCapture) as? Bool ?? false }
         set { defaults.set(newValue, forKey: Key.popOnCapture) }
+    }
+
+    /// 未收藏截图的保留时长（小时），0 表示不自动清理；默认 24 小时
+    static var expireHours: Int {
+        get { defaults.object(forKey: Key.expireHours) as? Int ?? 24 }
+        set { defaults.set(newValue, forKey: Key.expireHours) }
+    }
+
+    /// 自动清理起算时间：首次读取时记下。升级前已有的截图从这一刻起算，不会一升级就被删
+    static var expiryBaseDate: Date {
+        if let d = defaults.object(forKey: Key.expiryBase) as? Date { return d }
+        let now = Date()
+        defaults.set(now, forKey: Key.expiryBase)
+        return now
     }
 
     /// 启动时自动检查更新（默认开启）

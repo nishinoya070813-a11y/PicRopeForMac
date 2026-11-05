@@ -32,6 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         EdgeTrigger.shared.start()
         HotKey.register()
 
+        // 自动清理过期的未收藏截图：启动时一次，之后每 5 分钟一次
+        CaptureStore.shared.purgeExpired()
+        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
+            CaptureStore.shared.purgeExpired()
+        }
+
         // 启动 3 秒后静默检查更新（可在设置中关闭）
         if Settings.autoCheckUpdate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -47,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(item("显示绳子", #selector(showRope)))
         menu.addItem(item("隐藏绳子", #selector(hideRope)))
-        menu.addItem(item("清空绳子", #selector(clearAll)))
+        menu.addItem(item("清空绳子（保留收藏）", #selector(clearAll)))
         menu.addItem(item("重置绳子位置", #selector(resetRope)))
         menu.addItem(.separator())
         let move = NSMenuItem(title: "移动到屏幕", action: nil, keyEquivalent: "")

@@ -1,4 +1,5 @@
 import AppKit
+import Vision
 
 /// 绳子上的单个截图：固定正方形（中心裁剪，无视原比例）
 /// 单击复制、双击钉桌面、右键菜单
@@ -8,6 +9,8 @@ final class RopeItemView: NSImageView {
     static let maxSide: CGFloat = 84
     private let side: CGFloat
     private let deleteBadge: DeleteBadge
+    private var mouseDownPoint: NSPoint?
+    private var dragStarted = false
 
     init(item: CaptureItem, side: CGFloat = RopeItemView.maxSide) {
         self.item = item
@@ -23,6 +26,22 @@ final class RopeItemView: NSImageView {
             CaptureStore.shared.remove(self.item)
         }
         addSubview(deleteBadge)
+
+        // 收藏标记：左上角黄色星星，常显
+        if CaptureStore.shared.isStarred(item) {
+            let star = NSImageView(frame: NSRect(x: 3, y: side - d - 3, width: d, height: d))
+            let config = NSImage.SymbolConfiguration(paletteColors: [.systemYellow])
+            star.image = NSImage(systemSymbolName: "star.fill", accessibilityDescription: "已收藏")?
+                .withSymbolConfiguration(config)
+            star.imageScaling = .scaleProportionallyUpOrDown
+            star.shadow = {
+                let s = NSShadow()
+                s.shadowColor = NSColor.black.withAlphaComponent(0.6)
+                s.shadowBlurRadius = 2
+                return s
+            }()
+            addSubview(star, positioned: .below, relativeTo: deleteBadge)
+        }
         self.image = RopeItemView.cachedSquare(item, side: side)
         self.imageScaling = .scaleProportionallyUpOrDown
         wantsLayer = true
@@ -71,7 +90,50 @@ final class RopeItemView: NSImageView {
     // 注意：不调用 super 的鼠标事件处理，NSImageView 默认实现会吞掉后续事件
 
     override func mouseDown(with event: NSEvent) {
-        // 保留钩子：目前单击/双击均在 mouseUp 处理
+        // 单击/双击在 mouseUp 处理；这里只记下按下位置，用来判断是否开始拖出
+        mouseDownPoint = event.locationInWindow
+        dragStarted = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard !dragStarted, let start = mouseDownPoint else { return }
+        let p = event.locationInWindow
+        if hypot(p.x - start.x, p.y - start.y) > 4 {
+            startDrag(with: event)
+        }
+    }
+
+    // MARK: - 拖出到其他应用（微信、访达、Word……）
+
+    private func startDrag(with event: NSEvent) {
+        dragStarted = true
+        clickTimer?.invalidate()
+        ImagePreview.shared.hide()
+        RopePanel.shared.cancelHide()
+        RopePanel.shared.isDraggingOut = true
+
+        // 同时提供 PNG 数据和临时文件：能收图片的收图片，只收文件的（访达、微信）收文件
+        let pbItem = NSPasteboardItem()
+        pbItem.setData(item.data, forType: .png)
+        if let url = RopeItemView.dragFileURL(for: item) {
+            pbItem.setString(url.absoluteString, forType: .fileURL)
+        }
+        let dragItem = NSDraggingItem(pasteboardWriter: pbItem)
+        dragItem.setDraggingFrame(bounds, contents: image)
+        beginDraggingSession(with: [dragItem], event: event, source: self)
+    }
+
+    /// 拖出用的临时文件，文件名带截图时间，便于在目标处辨认
+    private static func dragFileURL(for item: CaptureItem) -> URL? {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PicRopeDrag", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH.mm.ss"
+        let name = "截图 \(f.string(from: item.createdAt)) \(item.id.uuidString.prefix(4)).png"
+        let url = dir.appendingPathComponent(name)
+        guard (try? item.data.write(to: url)) != nil else { return nil }
+        return url
     }
 
     /// 单击复制延迟判定：等 0.22s 确认没有第二击（双击）才执行，避免双击钉图时先复制
@@ -79,6 +141,11 @@ final class RopeItemView: NSImageView {
 
     override func mouseUp(with event: NSEvent) {
         ImagePreview.shared.hide()
+        mouseDownPoint = nil
+        if dragStarted {
+            dragStarted = false
+            return
+        }
         clickTimer?.invalidate()
         if event.clickCount == 2 {
             // 双击：只钉图，不复制
@@ -164,14 +231,18 @@ final class RopeItemView: NSImageView {
     override func menu(for event: NSEvent) -> NSMenu? {
         ImagePreview.shared.hide()
         let menu = NSMenu()
+        let starred = CaptureStore.shared.isStarred(item)
+        menu.addItem(mi(starred ? "取消收藏" : "收藏（不会被自动清理）", #selector(starMenu)))
+        menu.addItem(.separator())
+        menu.addItem(mi("提取文字", #selector(ocrMenu)))
         menu.addItem(mi("用预览打开", #selector(openMenu)))
         menu.addItem(mi("复制", #selector(copyToClipboardMenu)))
         menu.addItem(mi("钉在桌面", #selector(pinMenu)))
         menu.addItem(mi("存储到…", #selector(saveMenu)))
         menu.addItem(.separator())
         menu.addItem(mi("删除此图片", #selector(removeMenu)))
-        menu.addItem(mi("移除除此之外所有图片", #selector(removeOthersMenu)))
-        menu.addItem(mi("删除绳子上所有图片", #selector(removeAllMenu)))
+        menu.addItem(mi("删除其他未收藏图片", #selector(removeOthersMenu)))
+        menu.addItem(mi("删除所有未收藏图片", #selector(removeAllMenu)))
         return menu
     }
 
@@ -187,6 +258,36 @@ final class RopeItemView: NSImageView {
     @objc private func removeOthersMenu() { CaptureStore.shared.removeAll(except: item) }
     @objc private func removeAllMenu() { CaptureStore.shared.clear() }
 
+    @objc private func starMenu() { CaptureStore.shared.toggleStar(item) }
+
+    /// 提取文字：用系统 Vision 离线识别（中英文），结果复制到剪贴板
+    @objc private func ocrMenu() {
+        guard let cg = item.image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            LightNotice.show("图片读取失败")
+            return
+        }
+        LightNotice.show("正在识别文字…")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = true
+            request.recognitionLanguages = ["zh-Hans", "en-US"]
+            try? VNImageRequestHandler(cgImage: cg).perform([request])
+            let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+            DispatchQueue.main.async {
+                guard !lines.isEmpty else {
+                    LightNotice.show("没有识别到文字")
+                    return
+                }
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(lines.joined(separator: "\n"), forType: .string)
+                ClipboardMonitorBridge.shared.markSelfWrite()
+                LightNotice.show("已复制文字（\(lines.count) 行）")
+            }
+        }
+    }
+
     /// 写到临时目录再用默认看图应用（通常是“预览”）打开，不碰绳子自己的存档文件
     @objc private func openMenu() {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(item.fileName)
@@ -201,6 +302,23 @@ final class RopeItemView: NSImageView {
         panel.nameFieldStringValue = "PicRope-\(Int(item.createdAt.timeIntervalSince1970)).png"
         if panel.runModal() == .OK, let url = panel.url {
             try? item.data.write(to: url)
+        }
+    }
+}
+
+extension RopeItemView: NSDraggingSource {
+    func draggingSession(_ session: NSDraggingSession,
+                         sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        .copy
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint,
+                         operation: NSDragOperation) {
+        let rope = RopePanel.shared
+        rope.isDraggingOut = false
+        // 松手处不在绳子上才收起
+        if !NSPointInRect(NSEvent.mouseLocation, rope.panelFrame) {
+            rope.scheduleHide(after: 0.4)
         }
     }
 }

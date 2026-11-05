@@ -25,7 +25,7 @@ final class DeleteBadge: NSButton {
     @objc private func tapped() { onClick?() }
 }
 
-/// 绳子右下角的「清空全部」：点一次变成「确认清空？」，3 秒内再点才真正清空，防误触
+/// 绳子右下角的「清空」（保留收藏）：点一次变成「确认清空？」，3 秒内再点才真正清空，防误触
 final class ClearAllButton: NSButton {
     private var armed = false
     private var resetWork: DispatchWorkItem?
@@ -37,6 +37,7 @@ final class ClearAllButton: NSButton {
         font = .systemFont(ofSize: 11, weight: .medium)
         target = self
         action = #selector(tapped)
+        toolTip = "清空所有未收藏的截图（收藏的保留）"
         disarm()
     }
 
@@ -63,7 +64,7 @@ final class ClearAllButton: NSButton {
     func disarm() {
         resetWork?.cancel()
         armed = false
-        title = "清空全部"
+        title = "清空"
         contentTintColor = nil
     }
 }

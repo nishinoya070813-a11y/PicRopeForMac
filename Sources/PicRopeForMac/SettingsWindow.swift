@@ -14,6 +14,7 @@ final class SettingsWindowController {
     private var transparentCheck: NSButton!
     private var loginCheck: NSButton!
     private var popCheck: NSButton!
+    private var expirePopup: NSPopUpButton!
     private var sideField: NSTextField!
     private var sideStepper: NSStepper!
     private var updateYesRadio: NSButton!
@@ -29,12 +30,13 @@ final class SettingsWindowController {
         var ropeAlwaysVisible = Settings.ropeAlwaysVisible
         var ropeTransparent = Settings.ropeTransparent
         var popOnCapture = Settings.popOnCapture
+        var expireHours = Settings.expireHours
         var defaultSide = Settings.defaultSide
         var autoCheckUpdate = Settings.autoCheckUpdate
     }
 
     private init() {
-        let w = 480.0, h = 436.0
+        let w = 480.0, h = 468.0
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                           styleMask: [.titled, .closable],
                           backing: .buffered, defer: false)
@@ -83,9 +85,26 @@ final class SettingsWindowController {
         popCheck.frame = NSRect(x: x, y: row(212), width: w - 48, height: 24)
         content.addSubview(popCheck)
 
+        // 自动清理未收藏截图
+        let expireLabel = NSTextField(labelWithString: "自动清理未收藏的截图：")
+        expireLabel.font = .systemFont(ofSize: 13)
+        expireLabel.sizeToFit()
+        expireLabel.frame.origin = NSPoint(x: x, y: row(244) + 4)
+        content.addSubview(expireLabel)
+
+        expirePopup = NSPopUpButton(frame: NSRect(x: x + 160, y: row(244), width: 140, height: 26))
+        for (title, hours) in [("不自动清理", 0), ("12 小时后", 12), ("24 小时后", 24),
+                               ("3 天后", 72), ("7 天后", 168)] {
+            expirePopup.addItem(withTitle: title)
+            expirePopup.lastItem?.tag = hours
+        }
+        expirePopup.target = self
+        expirePopup.action = #selector(draftChanged)
+        content.addSubview(expirePopup)
+
         loginCheck = NSButton(checkboxWithTitle: "开机自动启动（立即生效，无需确定）",
                               target: self, action: #selector(toggleLogin))
-        loginCheck.frame = NSRect(x: x, y: row(244), width: w - 48, height: 24)
+        loginCheck.frame = NSRect(x: x, y: row(276), width: w - 48, height: 24)
         loginCheck.state = SMAppService.mainApp.status == .enabled ? .on : .off
         content.addSubview(loginCheck)
 
@@ -93,35 +112,35 @@ final class SettingsWindowController {
         let updateLabel = NSTextField(labelWithString: "启动时自动检查更新：")
         updateLabel.font = .systemFont(ofSize: 13)
         updateLabel.sizeToFit()
-        updateLabel.frame.origin = NSPoint(x: x, y: row(276) + 4)
+        updateLabel.frame.origin = NSPoint(x: x, y: row(308) + 4)
         content.addSubview(updateLabel)
 
         updateYesRadio = NSButton(radioButtonWithTitle: "是", target: self, action: #selector(radioChanged))
-        updateYesRadio.frame = NSRect(x: x + 160, y: row(276), width: 44, height: 24)
+        updateYesRadio.frame = NSRect(x: x + 160, y: row(308), width: 44, height: 24)
         content.addSubview(updateYesRadio)
 
         updateNoRadio = NSButton(radioButtonWithTitle: "否", target: self, action: #selector(radioChanged))
-        updateNoRadio.frame = NSRect(x: x + 206, y: row(276), width: 44, height: 24)
+        updateNoRadio.frame = NSRect(x: x + 206, y: row(308), width: 44, height: 24)
         content.addSubview(updateNoRadio)
 
         let checkBtn = NSButton(title: "检查更新", target: self, action: #selector(checkNow))
         checkBtn.bezelStyle = .rounded
-        checkBtn.frame = NSRect(x: w - 130, y: row(276), width: 100, height: 28)
+        checkBtn.frame = NSRect(x: w - 130, y: row(308), width: 100, height: 28)
         content.addSubview(checkBtn)
 
         let sizeLabel = NSTextField(labelWithString: "默认截图卡片大小：")
         sizeLabel.font = .systemFont(ofSize: 13)
         sizeLabel.sizeToFit()
-        sizeLabel.frame.origin = NSPoint(x: x, y: row(310) + 4)
+        sizeLabel.frame.origin = NSPoint(x: x, y: row(342) + 4)
         content.addSubview(sizeLabel)
 
-        sideField = NSTextField(frame: NSRect(x: x + 130, y: row(314), width: 56, height: 24))
+        sideField = NSTextField(frame: NSRect(x: x + 130, y: row(346), width: 56, height: 24))
         sideField.alignment = .center
         sideField.target = self
         sideField.action = #selector(fieldChanged)
         content.addSubview(sideField)
 
-        sideStepper = NSStepper(frame: NSRect(x: x + 192, y: row(314), width: 60, height: 24))
+        sideStepper = NSStepper(frame: NSRect(x: x + 192, y: row(346), width: 60, height: 24))
         sideStepper.minValue = 40
         sideStepper.maxValue = 240
         sideStepper.increment = 8
@@ -133,13 +152,13 @@ final class SettingsWindowController {
         let sizeTip = NSTextField(labelWithString: "pt（40–240，仅基准大小，数量多时仍会自动缩小）")
         sizeTip.font = .systemFont(ofSize: 11)
         sizeTip.textColor = .secondaryLabelColor
-        sizeTip.frame = NSRect(x: x, y: row(340), width: w - 48, height: 18)
+        sizeTip.frame = NSRect(x: x, y: row(372), width: w - 48, height: 18)
         content.addSubview(sizeTip)
 
         let tip = NSTextField(labelWithString: "绳子操作：拖动空白处上下移动绳子；右键空白处可重置位置")
         tip.font = .systemFont(ofSize: 11)
         tip.textColor = .secondaryLabelColor
-        tip.frame = NSRect(x: x, y: row(360), width: w - 48, height: 18)
+        tip.frame = NSRect(x: x, y: row(392), width: w - 48, height: 18)
         content.addSubview(tip)
 
         // 恢复默认 / 确定 / 取消
@@ -187,6 +206,9 @@ final class SettingsWindowController {
         alwaysCheck.state = draft.ropeAlwaysVisible ? .on : .off
         transparentCheck.state = draft.ropeTransparent ? .on : .off
         popCheck.state = draft.popOnCapture ? .on : .off
+        if !expirePopup.selectItem(withTag: draft.expireHours) {
+            expirePopup.selectItem(withTag: 24)
+        }
         sideField.stringValue = String(Int(draft.defaultSide))
         sideStepper.doubleValue = draft.defaultSide
         updateYesRadio.state = draft.autoCheckUpdate ? .on : .off
@@ -202,6 +224,7 @@ final class SettingsWindowController {
         draft.ropeAlwaysVisible = alwaysCheck.state == .on
         draft.ropeTransparent = transparentCheck.state == .on
         draft.popOnCapture = popCheck.state == .on
+        draft.expireHours = expirePopup.selectedTag()
     }
 
     /// 单选框互斥（是/否）
@@ -251,10 +274,12 @@ final class SettingsWindowController {
         Settings.ropeAlwaysVisible = draft.ropeAlwaysVisible
         Settings.ropeTransparent = draft.ropeTransparent
         Settings.popOnCapture = draft.popOnCapture
+        Settings.expireHours = draft.expireHours
         Settings.defaultSide = draft.defaultSide
         Settings.autoCheckUpdate = draft.autoCheckUpdate
 
         // 应用
+        CaptureStore.shared.purgeExpired()
         ClipboardMonitorBridge.shared.applySettings()
         RopePanel.shared.applySettings()
         RopePanel.shared.reloadIfShown()
@@ -277,6 +302,7 @@ final class SettingsWindowController {
         Settings.ropeAlwaysVisible = false
         Settings.ropeTransparent = false
         Settings.popOnCapture = false
+        Settings.expireHours = 24
         UserDefaults.standard.removeObject(forKey: "ropeOffsetsPerScreen")  // 清空各屏绳子偏移
         Settings.defaultSide = 84
 

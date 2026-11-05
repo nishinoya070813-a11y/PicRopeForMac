@@ -208,8 +208,11 @@ final class RopePanel {
     }
 
     /// 鼠标离开后延迟收起（避免误触）；常驻模式下不自动收起，但手动隐藏始终有效
+    /// 正在把截图拖出绳子：期间不自动收起，否则拖到一半绳子没了
+    var isDraggingOut = false
+
     func scheduleHide(after delay: TimeInterval = 0.35) {
-        guard !Settings.ropeAlwaysVisible else { return }
+        guard !Settings.ropeAlwaysVisible, !isDraggingOut else { return }
         hideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.hide() }
         hideWork = work
